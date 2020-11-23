@@ -32,7 +32,7 @@ impl Apa102 {
         let buf = &mut self.buffer;
         for i in 0..self.length {
             let idx = 4 * (1 + i);
-            let e = &frame[i];
+            let e = frame[i];
             buf[idx] = 0xE0 | e.a;
             buf[idx + 1] = e.b;
             buf[idx + 2] = e.g;

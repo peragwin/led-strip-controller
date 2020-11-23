@@ -1,4 +1,4 @@
-use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 
 use anyhow::{anyhow, Result};
 
@@ -22,7 +22,7 @@ where
     T: Transform<Color>,
 {
     _transform: T,
-    sender: Sender<Vec<Color>>,
+    sender: SyncSender<Vec<Color>>,
 }
 
 impl<Color, T> Display<Color, T>
@@ -31,7 +31,7 @@ where
     T: Transform<Color>,
 {
     pub fn new(transform: T) -> (Self, Receiver<Vec<Color>>) {
-        let (sender, receiver) = channel();
+        let (sender, receiver) = sync_channel(0);
         (
             Self {
                 _transform: transform,

@@ -31,8 +31,7 @@ struct Opts {
 #[derive(Clap)]
 enum Command {
     Set(SetOpts),
-    /// Run tests
-    Test,
+    Test(TestOpts),
 }
 
 /// Set all LEDs a single color
@@ -49,9 +48,13 @@ struct SetOpts {
     alpha: u8,
 }
 
-// /// Run tests
-// #[derive(Clap)]
-// struct TestOpts {}
+/// Run tests
+#[derive(Clap)]
+struct TestOpts {
+    /// Test duration in seconds
+    #[clap(default_value = "4")]
+    duration: u32,
+}
 
 struct App {
     display: Display<ARGB8, display::Identity>,
@@ -104,16 +107,20 @@ fn main() {
                     b: blue,
                 })
                 .collect();
-            app.display.write(&frame).expect("failed to write frame");
-            thread::sleep(std::time::Duration::from_millis(500));
+            for _ in 0..2 {
+                // write twice to block until the first frame has finished transferring
+                app.display.write(&frame).expect("failed to write frame");
+            }
         }
-        Command::Test => {
-            let mut spi =
-                Spi::new(Bus::Spi0, SlaveSelect::Ss0, opts.spi_clock, Mode::Mode0).unwrap();
-
-            let led_frame: Vec<u8> = (0..opts.length + 6 + (opts.length / 16))
-                .map(|_| (0..4).collect::<Vec<u8>>())
-                .flatten()
+        Command::Test(TestOpts { duration }) => {
+            // spam frames to check for flickering
+            let frame = (0..opts.length)
+                .map(|_| ARGB8 {
+                    a: 1,
+                    r: 1,
+                    g: 1,
+                    b: 1,
+                })
                 .collect();
 
             let mut fps = 0;
@@ -121,10 +128,9 @@ fn main() {
             let then = SystemTime::now();
             while {
                 let now = SystemTime::now();
-                now < (then + std::time::Duration::new(4, 0))
+                now < (then + std::time::Duration::new(duration as u64, 0))
             } {
-                spi.write(&led_frame).unwrap();
-                // app.leds.write((0..opts.length).map(|_| BLACK)).unwrap();
+                app.display.write(&frame).expect("failed to write frame");
                 fps += 1;
             }
             println!("Raw fps test of SPI bus: {:?}", fps / 4);
