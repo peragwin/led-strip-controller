@@ -33,7 +33,7 @@ impl Apa102 {
         for i in 0..self.length {
             let idx = 4 * (1 + i);
             let e = &frame[i];
-            buf[idx] = 0xE0 & e.a;
+            buf[idx] = 0xE0 | e.a;
             buf[idx + 1] = e.b;
             buf[idx + 2] = e.g;
             buf[idx + 3] = e.r;
@@ -44,39 +44,3 @@ impl Apa102 {
         &self.buffer
     }
 }
-
-// impl Buffer<'_, ARGB8> for Apa102 {
-//     /// Update swaps the read and write buffers using unsafe pointer-foo.
-//     fn update(&self) {
-//         // unsafe {
-//         let wb = self.wb;
-//         self.wb = self.rb;
-//         self.rb = wb;
-//         // }
-//     }
-
-//     fn write_frame(&self, frame: &[ARGB8]) {
-//         let buf = &*self.wb;
-//         for i in 0..self.length {
-//             let idx = 4 * (1 + i);
-//             let e = frame[i];
-//             buf[idx] = 0xE0 & e.a;
-//             buf[idx + 1] = e.b;
-//             buf[idx + 2] = e.g;
-//             buf[idx + 3] = e.r;
-//         }
-//     }
-
-//     // fn write_pixel(&self, n: usize, pixel: ARGB8) {
-//     //     let buf = &*self.wb;
-//     //     let idx = 4 * (1 + n);
-//     //     buf[idx] = 0xE0 & pixel.a;
-//     //     buf[idx + 1] = pixel.b;
-//     //     buf[idx + 2] = pixel.g;
-//     //     buf[idx + 3] = pixel.r;
-//     // }
-
-//     // fn read(&self) -> &Vec<u8> {
-//     //     &*self.rb
-//     // }
-// }
