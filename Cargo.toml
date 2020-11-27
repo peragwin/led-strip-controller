@@ -11,4 +11,7 @@ embedded-hal = "=1.0.0-alpha.3"
 anyhow = "1.0"
 clap = "3.0.0-beta.2"
 rppal = { version = "0.11.3", features = ["hal"] }
-# audio = { path = "../vuzic/rs/audio" }
+audio = { path = "../vuzic/rs/audio" }
+rust-hsluv = "0.1.4"
+serde = { version="1.0.117", features=["derive"] }
+serde_yaml = "0.8.14"

@@ -1,11 +1,15 @@
-#![no_std]
-
 #[derive(Copy, Clone, Debug)]
 pub struct ARGB8 {
     pub a: u8,
     pub r: u8,
     pub g: u8,
     pub b: u8,
+}
+
+impl ARGB8 {
+    pub fn new(a: u8, r: u8, g: u8, b: u8) -> Self {
+        Self { a, r, g, b }
+    }
 }
 
 /// Apa102 LED strip buffer
