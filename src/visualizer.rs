@@ -67,28 +67,41 @@ impl Visualizer {
         let now = std::time::SystemTime::now();
 
         thread::spawn(move || {
-            let mut sfft = audio::sfft::SlidingFFT::new(fft_size);
-            let mut bucketer =
-                audio::bucketer::Bucketer::new(sfft.output_size(), bins, 32.0, 22000.0);
+            let boost_params = audio::gain_control::Params::defaults();
+            let mut analyzer = audio::Analyzer::new(
+                fft_size,
+                block_size,
+                bins,
+                length,
+                boost_params,
+                audio_params,
+            );
 
-            let mut fs = audio::frequency_sensor::FrequencySensor::new(bins, length, audio_params);
-            let mut sample_count = 0;
-            let mut fps = 0;
+            // let mut sfft = audio::sfft::SlidingFFT::new(fft_size);
+            // let mut bucketer =
+            //     audio::bucketer::Bucketer::new(sfft.output_size(), bins, 32.0, 22000.0);
 
-            let mut process = |data| {
-                sfft.push_input(&data);
-                sample_count += data.len();
-                if sample_count >= block_size {
-                    sample_count = 0;
-                    let frame = sfft.process();
-                    let bins = bucketer.bucket(frame);
-                    fs.process(bins);
-                    let features = fs.get_features();
+            // let mut fs = audio::frequency_sensor::FrequencySensor::new(bins, length, audio_params);
+            // let mut sample_count = 0;
+            // let mut fps = 0;
 
-                    fps += 1;
-                    if verbose >= 2 && fps % 32 == 0 {
+            let mut process = |mut data| {
+                if let Some(features) = analyzer.process(&mut data) {
+                    // sfft.push_input(&data);
+                    // sample_count += data.len();
+                    // if sample_count >= block_size {
+                    //     sample_count = 0;
+                    //     let frame = sfft.process();
+                    //     let bins = bucketer.bucket(frame);
+                    //     fs.process(bins);
+                    //     let features = fs.get_features();
+
+                    // fps += 1;
+                    if verbose >= 2 && features.get_frame_count() % 32 == 0 {
                         let mut out = String::new();
-                        fs.debug(&mut out).expect("failed to write debug");
+                        analyzer
+                            .write_debug(&mut out)
+                            .expect("failed to write debug");
                         println!("{}", out);
                     }
 

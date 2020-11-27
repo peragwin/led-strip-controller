@@ -30,14 +30,6 @@ struct Opts {
     /// Don't actually load SPI or output anything
     #[clap(short = 'n', long)]
     dry_run: bool,
-
-    /// Synchronous mode (no threading)
-    #[clap(long = "sync")]
-    synchronous: bool,
-
-    // / Path to config file
-    // #[clap(long)]
-    // config: Option<String>,
     /// Number of LEDs in strips
     length: u16,
     /// SPI clock speed in hz
@@ -274,34 +266,17 @@ fn test_audio(timeout: u64, show_configs: bool, device: Option<&str>) {
     println!("Bucket Indices: {:?}", bucketer.indices);
 
     thread::spawn(move || {
-        let mut sample_count = 0;
+        let boost_params = audio::gain_control::Params::defaults();
+        let fs_params = FrequencySensorParams::defaults();
+        let mut analyzer = audio::Analyzer::new(1024, 256, 4, 128, boost_params, fs_params);
         loop {
-            if let Ok((t, data)) = audio_data_rx.recv() {
-                sfft.push_input(&data);
-                let then = std::time::SystemTime::now();
-                sample_count += data.len();
-                if sample_count >= 256 {
-                    sample_count = 0;
-                    let frame = sfft.process();
-                    let bins = bucketer.bucket(frame);
-                    let now = std::time::SystemTime::now();
-
-                    fs.process(bins);
+            if let Ok((t, mut data)) = audio_data_rx.recv() {
+                if let Some(features) = analyzer.process(&mut data) {
                     let mut out = String::new();
-                    fs.debug(&mut out).expect("failed to write fs debug");
+                    analyzer
+                        .write_debug(&mut out)
+                        .expect("failed to write fs debug");
                     println!("{}", out);
-
-                    // let features = fs.get_features();
-                    // let after = std::time::SystemTime::now();
-
-                    // println!(
-                    //     "Bins: {:?}, {:?}, {:?}, {:?}, {:?}",
-                    //     after.duration_since(now),
-                    //     now.duration_since(t),
-                    //     now.duration_since(then),
-                    //     then.duration_since(t),
-                    //     features.get_amplitudes(0),
-                    // );
                 }
             } else {
                 break;
