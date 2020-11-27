@@ -1,10 +1,15 @@
 use std::thread;
 
+#[macro_use]
+extern crate lazy_static;
+
 use anyhow::Result;
 use clap::Clap;
 use rppal::spi::{Bus, Mode, SlaveSelect, Spi};
 use serde::{Deserialize, Serialize};
 use serde_yaml;
+
+use audio::frequency_sensor::FrequencySensorParams;
 
 mod apa102;
 use apa102::{Apa102, ARGB8};
@@ -97,7 +102,7 @@ struct App {
 
 #[derive(Serialize, Deserialize, Copy, Clone, Debug)]
 struct Config {
-    audio: audio::params::FrequencySensorParams,
+    audio: FrequencySensorParams,
     visualizer: visualizer::Params,
 }
 
@@ -106,7 +111,7 @@ impl Config {
 
     fn default() -> Self {
         Self {
-            audio: audio::params::FrequencySensorParams::defaults(),
+            audio: FrequencySensorParams::defaults(),
             visualizer: visualizer::Params::defaults(),
         }
     }
@@ -141,7 +146,7 @@ fn setup(opts: &Opts) -> Result<App> {
                 let now = std::time::SystemTime::now();
                 if let Ok(e) = now.duration_since(then) {
                     then = now;
-                    println!("FPS: {}", fps as f32 / e.as_secs_f32());
+                    println!("FPS: {}", fps as f64 / e.as_secs_f64());
                 }
                 fps = 0;
             }
@@ -264,11 +269,8 @@ fn test_audio(timeout: u64, show_configs: bool, device: Option<&str>) {
 
     let mut sfft = audio::sfft::SlidingFFT::new(1024);
     let mut bucketer = audio::bucketer::Bucketer::new(512, 16, 32.0, 16000.0);
-    let mut fs = audio::frequency_sensor::FrequencySensor::new(
-        16,
-        128,
-        audio::params::FrequencySensorParams::defaults(),
-    );
+    let mut fs =
+        audio::frequency_sensor::FrequencySensor::new(16, 128, FrequencySensorParams::defaults());
     println!("Bucket Indices: {:?}", bucketer.indices);
 
     thread::spawn(move || {
@@ -285,7 +287,9 @@ fn test_audio(timeout: u64, show_configs: bool, device: Option<&str>) {
                     let now = std::time::SystemTime::now();
 
                     fs.process(bins);
-                    fs.print_debug();
+                    let mut out = String::new();
+                    fs.debug(&mut out).expect("failed to write fs debug");
+                    println!("{}", out);
 
                     // let features = fs.get_features();
                     // let after = std::time::SystemTime::now();
@@ -309,7 +313,8 @@ fn test_audio(timeout: u64, show_configs: bool, device: Option<&str>) {
 
     let handle_stream = move |data: &[f32]| {
         let now = std::time::SystemTime::now();
-        if let Err(e) = audio_data_tx.send((now, data.to_vec())) {
+        let data = data.iter().map(|&x| x as f64).collect();
+        if let Err(e) = audio_data_tx.send((now, data)) {
             println!("failed to send audio data: {}", e);
         }
     };

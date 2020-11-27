@@ -26,34 +26,33 @@ pub struct Opts {
 
     #[clap(long, short = 'l', default_value = "144")]
     length: usize,
-
-    #[clap(long)]
-    pre_gain: Option<i32>,
 }
 
 pub struct Visualizer {
     opts: Opts,
     params: Params,
     verbose: i32,
-    sigmoid: Sigmoid,
-    clut: Clut,
+}
+
+lazy_static! {
+    static ref SIGMOID: Sigmoid = Sigmoid::new();
+    static ref CLUT: Clut = Clut::new();
 }
 
 impl Visualizer {
     pub fn new(opts: Opts, params: Params, verbose: i32) -> Self {
+        // let clut = Clut::new();
         Self {
             opts,
             params,
             verbose,
-            sigmoid: Sigmoid::new(),
-            clut: Clut::new(),
         }
     }
 
     pub fn run(
         &self,
         output_size: (usize, usize),
-        audio_params: audio::params::FrequencySensorParams,
+        audio_params: audio::frequency_sensor::FrequencySensorParams,
         frame_tx: SyncSender<Vec<ARGB8>>,
     ) {
         let block_size = self.opts.sample_block_size;
@@ -76,8 +75,6 @@ impl Visualizer {
             let mut sample_count = 0;
             let mut fps = 0;
 
-            // let now = std::time::SystemTime::now();
-
             let mut process = |data| {
                 sfft.push_input(&data);
                 sample_count += data.len();
@@ -90,7 +87,9 @@ impl Visualizer {
 
                     fps += 1;
                     if verbose >= 2 && fps % 32 == 0 {
-                        fs.print_debug();
+                        let mut out = String::new();
+                        fs.debug(&mut out).expect("failed to write debug");
+                        println!("{}", out);
                     }
 
                     // FIXME: this clone is needlessly expensive on failure to send
@@ -124,7 +123,6 @@ impl Visualizer {
                 if verbose >= 4 {
                     println!("rx audio");
                 };
-                // thread::sleep(std::time::Duration::from_millis(1000));
             }
         });
 
@@ -132,7 +130,8 @@ impl Visualizer {
             if verbose >= 4 {
                 println!("tx audio");
             }
-            if let Err(e) = audio_data_tx.send(data.to_vec()) {
+            let data = data.iter().map(|&x| x as f64).collect();
+            if let Err(e) = audio_data_tx.send(data) {
                 if verbose >= 3 {
                     println!(
                         "[{:08}]: failed to send audio data: {}",
@@ -189,14 +188,12 @@ impl Visualizer {
         let scales = features.get_scales();
         let energy = features.get_energy();
         // let diff = features.get_diff();
-        let ws = 2.0 * std::f32::consts::PI / (length as f32);
+        let ws = 2.0 * std::f64::consts::PI / (length as f64);
 
         for i in 0..length {
+            let phi = ws * i as f64;
             let amp = features.get_amplitudes(i);
-            let phi = ws * i as f32;
-
             for j in 0..width {
-                //, ph := range phase {
                 let val = scales[j] * (amp[j] - 1.0);
                 frame[j * length + i] = self.get_hsv(&self.params, val, energy[j], phi)
             }
@@ -205,16 +202,16 @@ impl Visualizer {
         frame
     }
 
-    fn get_hsv(&self, params: &Params, val: f32, e: f32, phi: f32) -> ARGB8 {
+    fn get_hsv(&self, params: &Params, val: f64, e: f64, phi: f64) -> ARGB8 {
         let vs = params.value_scale;
         let ls = params.lightness_scale;
         let als = params.alpha_scale;
 
-        let hue = 0.5 * (params.cycle * phi + e) / std::f32::consts::PI;
-        let value = ls.0 * self.sigmoid.f(vs.0 * val + vs.1) + ls.1;
-        let alpha = params.max_alpha * self.sigmoid.f(als.0 * val + als.1);
+        let hue = 180. * (params.cycle * e + phi) / std::f64::consts::PI;
+        let value = ls.0 * SIGMOID.f(vs.0 * val + vs.1) + ls.1;
+        let alpha = params.max_alpha * SIGMOID.f(als.0 * val + als.1);
 
-        let color = self.clut.lookup(hue, value);
+        let color = CLUT.lookup(hue, value);
         ARGB8::new(
             (31.5 * alpha) as u8,
             (255.5 * color.0) as u8,
@@ -226,11 +223,11 @@ impl Visualizer {
 
 #[derive(Serialize, Deserialize, Copy, Clone, Debug)]
 pub struct Params {
-    value_scale: (f32, f32),
-    lightness_scale: (f32, f32),
-    alpha_scale: (f32, f32),
-    max_alpha: f32,
-    cycle: f32,
+    value_scale: (f64, f64),
+    lightness_scale: (f64, f64),
+    alpha_scale: (f64, f64),
+    max_alpha: f64,
+    cycle: f64,
 }
 
 impl Params {
@@ -246,25 +243,25 @@ impl Params {
 }
 
 struct Sigmoid {
-    lut: [f32; Self::SIZE],
+    lut: Vec<f64>, // [f64; Self::SIZE],
 }
 
 impl Sigmoid {
     const SIZE: usize = 2048;
-    const RANGE: f32 = 10.0;
-    const SCALE: f32 = Self::SIZE as f32 / (2. * Self::RANGE);
+    const RANGE: f64 = 10.0;
+    const SCALE: f64 = Self::SIZE as f64 / (2. * Self::RANGE);
 
     fn new() -> Self {
-        let mut lut = [0.; Self::SIZE];
-        let hl = (Self::SIZE / 2) as f32;
+        let mut lut = vec![0.; Self::SIZE];
+        let hl = (Self::SIZE / 2) as f64;
         for i in 0..Self::SIZE {
-            let x = (i as f32 - hl) / hl * Self::RANGE;
-            lut[i] = 1. / (1. + f32::exp(-x));
+            let x = (i as f64 - hl) / hl * Self::RANGE;
+            lut[i] = 1. / (1. + f64::exp(-x));
         }
         Self { lut }
     }
 
-    fn f(&self, x: f32) -> f32 {
+    fn f(&self, x: f64) -> f64 {
         if x >= Self::RANGE {
             self.lut[Self::SIZE - 1]
         } else if x <= -Self::RANGE {
@@ -277,7 +274,7 @@ impl Sigmoid {
 }
 
 struct Clut {
-    lut: [[(f32, f32, f32); Self::VALUES]; Self::HUES],
+    lut: Vec<Vec<(f64, f64, f64)>>, //[[(f64, f64, f64); Self::VALUES]; Self::HUES],
 }
 
 impl Clut {
@@ -286,12 +283,12 @@ impl Clut {
 
     fn new() -> Self {
         use hsluv::hsluv_to_rgb;
-        let mut lut = [[(0., 0., 0.); Self::VALUES]; Self::HUES];
+        let mut lut = vec![vec![(0., 0., 0.); Self::VALUES]; Self::HUES];
         for h in 0..Self::HUES {
             for v in 0..Self::VALUES {
                 let c = hsluv_to_rgb((h as f64, 100., 100. * v as f64 / 256.));
                 let c = Self::gamma(c);
-                lut[h][v] = (c.0 as f32, c.1 as f32, c.2 as f32);
+                lut[h][v] = (c.0 as f64, c.1 as f64, c.2 as f64);
             }
         }
         Self { lut }
@@ -301,9 +298,9 @@ impl Clut {
         (c.0 * c.0, c.1 * c.1, c.2 * c.2)
     }
 
-    fn lookup(&self, h: f32, v: f32) -> (f32, f32, f32) {
-        let h = (h * Self::HUES as f32) as usize % Self::HUES;
-        let v = (v * Self::VALUES as f32) as usize;
+    fn lookup(&self, h: f64, v: f64) -> (f64, f64, f64) {
+        let h = (h * Self::HUES as f64) as usize % Self::HUES;
+        let v = (v * Self::VALUES as f64) as usize;
         let v = usize::max(usize::min(v, Self::VALUES - 1), 0);
         self.lut[h][v]
     }

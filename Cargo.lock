@@ -644,6 +644,7 @@ dependencies = [
  "audio",
  "clap",
  "embedded-hal 1.0.0-alpha.3",
+ "lazy_static",
  "rppal",
  "rust-hsluv",
  "serde",
